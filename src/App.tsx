@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { MediaProvider, useMedia } from './context/MediaContext';
+import { ProfileProvider, useProfile } from './context/ProfileContext';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
 import Uploader from './components/Uploader';
 import GridPreview from './pages/GridPreview';
 import StoryPreview from './pages/StoryPreview';
 import SinglePostPreview from './pages/SinglePostPreview';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 import {
   exchangeCodeForToken,
   refreshLongLivedToken,
@@ -14,13 +17,15 @@ import {
 
 const TOKEN_KEY = 'ig_access_token';
 const EXPIRES_KEY = 'ig_token_expires_at';
-const REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // refresh if <7d remaining
+const REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function storeToken(token: string, expiresInSeconds?: number) {
   localStorage.setItem(TOKEN_KEY, token);
   if (expiresInSeconds) {
-    const expiresAt = Date.now() + expiresInSeconds * 1000;
-    localStorage.setItem(EXPIRES_KEY, String(expiresAt));
+    localStorage.setItem(
+      EXPIRES_KEY,
+      String(Date.now() + expiresInSeconds * 1000),
+    );
   }
 }
 
@@ -36,6 +41,7 @@ function getStoredExpiry(): number | null {
 
 function InstagramAuthBridge() {
   const { importInstagramFeed } = useMedia();
+  const { syncProfileFromInstagram } = useProfile();
   const handledRef = useRef(false);
 
   useEffect(() => {
@@ -70,7 +76,6 @@ function InstagramAuthBridge() {
           window.history.replaceState({}, '', window.location.pathname);
         }
       } else if (token) {
-        // Token already stored — refresh proactively if near expiry.
         const expiresAt = getStoredExpiry();
         const expired = expiresAt !== null && Date.now() >= expiresAt;
         const nearExpiry =
@@ -85,40 +90,49 @@ function InstagramAuthBridge() {
             token = refreshed.access_token;
             storeToken(token, refreshed.expires_in);
           } catch (e) {
-            console.warn('Token refresh failed, will retry next load:', e);
+            console.warn('Token refresh failed:', e);
           }
         }
       }
 
       if (token) {
-        await importInstagramFeed(token);
+        await Promise.all([
+          syncProfileFromInstagram(token),
+          importInstagramFeed(token),
+        ]);
       }
     };
 
     run();
-  }, [importInstagramFeed]);
+  }, [importInstagramFeed, syncProfileFromInstagram]);
 
   return null;
 }
 
+export { clearStoredToken };
+
 export default function App() {
   return (
-    <MediaProvider>
-      <BrowserRouter>
-        <InstagramAuthBridge />
-        <div className="flex h-svh w-screen flex-col bg-white text-black dark:bg-black dark:text-white">
-          <Header />
-          <main className="flex-1 overflow-y-auto">
-            <Routes>
-              <Route path="/" element={<GridPreview />} />
-              <Route path="/story" element={<StoryPreview />} />
-              <Route path="/post" element={<SinglePostPreview />} />
-            </Routes>
-          </main>
-          <Uploader />
-          <BottomNav />
-        </div>
-      </BrowserRouter>
-    </MediaProvider>
+    <ProfileProvider>
+      <MediaProvider>
+        <BrowserRouter>
+          <InstagramAuthBridge />
+          <div className="flex h-svh w-screen flex-col bg-black text-white">
+            <Header />
+            <main className="flex-1 overflow-y-auto">
+              <Routes>
+                <Route path="/" element={<GridPreview />} />
+                <Route path="/story" element={<StoryPreview />} />
+                <Route path="/post" element={<SinglePostPreview />} />
+                <Route path="/privacy" element={<Privacy />} />
+                <Route path="/terms" element={<Terms />} />
+              </Routes>
+            </main>
+            <Uploader />
+            <BottomNav />
+          </div>
+        </BrowserRouter>
+      </MediaProvider>
+    </ProfileProvider>
   );
 }

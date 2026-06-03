@@ -23,6 +23,34 @@ export interface TokenExchangeResponse {
   expires_in?: number;
 }
 
+export interface IgProfile {
+  id: string;
+  username?: string;
+  name?: string;
+  biography?: string;
+  profile_picture_url?: string;
+  followers_count?: number;
+  follows_count?: number;
+  media_count?: number;
+  website?: string;
+}
+
+export async function fetchInstagramProfile(
+  accessToken: string,
+): Promise<IgProfile> {
+  const fields =
+    'id,username,name,biography,profile_picture_url,followers_count,follows_count,media_count,website';
+  const url = `${IG_GRAPH}/me?fields=${fields}&access_token=${encodeURIComponent(
+    accessToken,
+  )}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`IG profile fetch failed (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
 export async function refreshLongLivedToken(
   accessToken: string,
 ): Promise<{ access_token: string; expires_in: number }> {
