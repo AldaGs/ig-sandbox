@@ -1,122 +1,124 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useEffect, useRef } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { MediaProvider, useMedia } from './context/MediaContext';
+import Header from './components/layout/Header';
+import BottomNav from './components/layout/BottomNav';
+import Uploader from './components/Uploader';
+import GridPreview from './pages/GridPreview';
+import StoryPreview from './pages/StoryPreview';
+import SinglePostPreview from './pages/SinglePostPreview';
+import {
+  exchangeCodeForToken,
+  refreshLongLivedToken,
+} from './services/instagram';
 
-function App() {
-  const [count, setCount] = useState(0)
+const TOKEN_KEY = 'ig_access_token';
+const EXPIRES_KEY = 'ig_token_expires_at';
+const REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // refresh if <7d remaining
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function storeToken(token: string, expiresInSeconds?: number) {
+  localStorage.setItem(TOKEN_KEY, token);
+  if (expiresInSeconds) {
+    const expiresAt = Date.now() + expiresInSeconds * 1000;
+    localStorage.setItem(EXPIRES_KEY, String(expiresAt));
+  }
 }
 
-export default App
+function clearStoredToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(EXPIRES_KEY);
+}
+
+function getStoredExpiry(): number | null {
+  const raw = localStorage.getItem(EXPIRES_KEY);
+  return raw ? Number(raw) : null;
+}
+
+function InstagramAuthBridge() {
+  const { importInstagramFeed } = useMedia();
+  const handledRef = useRef(false);
+
+  useEffect(() => {
+    if (handledRef.current) return;
+    handledRef.current = true;
+
+    const run = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const error = params.get('error');
+
+      if (error) {
+        console.warn(
+          'Instagram auth error:',
+          error,
+          params.get('error_description'),
+        );
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      }
+
+      let token = localStorage.getItem(TOKEN_KEY);
+
+      if (code) {
+        try {
+          const data = await exchangeCodeForToken(code);
+          token = data.access_token;
+          storeToken(token, data.expires_in);
+        } catch (e) {
+          console.error(e);
+        } finally {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      } else if (token) {
+        // Token already stored — refresh proactively if near expiry.
+        const expiresAt = getStoredExpiry();
+        const expired = expiresAt !== null && Date.now() >= expiresAt;
+        const nearExpiry =
+          expiresAt !== null && expiresAt - Date.now() < REFRESH_WINDOW_MS;
+
+        if (expired) {
+          clearStoredToken();
+          token = null;
+        } else if (nearExpiry) {
+          try {
+            const refreshed = await refreshLongLivedToken(token);
+            token = refreshed.access_token;
+            storeToken(token, refreshed.expires_in);
+          } catch (e) {
+            console.warn('Token refresh failed, will retry next load:', e);
+          }
+        }
+      }
+
+      if (token) {
+        await importInstagramFeed(token);
+      }
+    };
+
+    run();
+  }, [importInstagramFeed]);
+
+  return null;
+}
+
+export default function App() {
+  return (
+    <MediaProvider>
+      <BrowserRouter>
+        <InstagramAuthBridge />
+        <div className="flex h-svh w-screen flex-col bg-white text-black dark:bg-black dark:text-white">
+          <Header />
+          <main className="flex-1 overflow-y-auto">
+            <Routes>
+              <Route path="/" element={<GridPreview />} />
+              <Route path="/story" element={<StoryPreview />} />
+              <Route path="/post" element={<SinglePostPreview />} />
+            </Routes>
+          </main>
+          <Uploader />
+          <BottomNav />
+        </div>
+      </BrowserRouter>
+    </MediaProvider>
+  );
+}
