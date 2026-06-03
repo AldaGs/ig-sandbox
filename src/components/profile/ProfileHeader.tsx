@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { useProfile } from '../../context/ProfileContext';
+import { useProfile, fileToDataUrl } from '../../context/ProfileContext';
 import { useMedia } from '../../context/MediaContext';
 
 export default function ProfileHeader() {
@@ -7,12 +7,15 @@ export default function ProfileHeader() {
   const { media } = useMedia();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setProfile({ profilePictureUrl: url });
-    e.target.value = '';
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setProfile({ profilePictureUrl: dataUrl });
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const formatCount = (n: number) =>
@@ -72,22 +75,30 @@ export default function ProfileHeader() {
         </div>
       </div>
 
-      {/* Name + bio + links */}
-      <div className="mt-3 text-sm leading-snug">
-        <div className="font-semibold">{profile.name}</div>
-        <pre className="whitespace-pre-wrap font-sans text-sm text-neutral-200">
-          {profile.biography}
-        </pre>
-        {profile.website && (
-          <a
-            href={profile.website}
-            target="_blank"
-            rel="noreferrer"
-            className="text-blue-400"
-          >
-            🔗 {profile.website.replace(/^https?:\/\//, '')}
-          </a>
-        )}
+      {/* Editable name + bio + website */}
+      <div className="mt-3 space-y-0.5 text-sm leading-snug">
+        <input
+          value={profile.name}
+          onChange={(e) => setProfile({ name: e.target.value })}
+          placeholder="Name"
+          className="block w-full bg-transparent font-semibold text-white outline-none placeholder:text-neutral-600"
+        />
+        <textarea
+          value={profile.biography}
+          onChange={(e) => setProfile({ biography: e.target.value })}
+          placeholder="Bio"
+          rows={Math.min(6, Math.max(2, profile.biography.split('\n').length))}
+          className="block w-full resize-none bg-transparent text-sm text-neutral-200 outline-none placeholder:text-neutral-600"
+        />
+        <div className="flex items-center gap-1 text-blue-400">
+          <span>🔗</span>
+          <input
+            value={profile.website ?? ''}
+            onChange={(e) => setProfile({ website: e.target.value })}
+            placeholder="Add a link"
+            className="block w-full bg-transparent text-sm text-blue-400 outline-none placeholder:text-neutral-600"
+          />
+        </div>
       </div>
 
       {/* Public action buttons */}
@@ -129,4 +140,3 @@ function Stat({ value, label }: { value: string; label: string }) {
     </div>
   );
 }
-

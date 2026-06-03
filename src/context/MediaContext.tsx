@@ -17,7 +17,6 @@ export interface MediaItem {
   aspect_ratio: number;
   source: MediaSource;
   permalink?: string;
-  pinned?: boolean;
 }
 
 interface MediaContextValue {
@@ -28,7 +27,6 @@ interface MediaContextValue {
   removeMedia: (id: string) => void;
   reorderMedia: (items: MediaItem[]) => void;
   clearMedia: () => void;
-  togglePin: (id: string) => void;
   importInstagramFeed: (accessToken: string) => Promise<void>;
 }
 
@@ -62,18 +60,6 @@ export function MediaProvider({ children }: { children: ReactNode }) {
 
   const reorderMedia: MediaContextValue['reorderMedia'] = (items) => {
     setMedia(items);
-  };
-
-  const togglePin = (id: string) => {
-    setMedia((prev) => {
-      const pinnedCount = prev.filter((m) => m.pinned).length;
-      return prev.map((m) => {
-        if (m.id !== id) return m;
-        // IG cap is 3 pinned posts; enforce it.
-        if (!m.pinned && pinnedCount >= 3) return m;
-        return { ...m, pinned: !m.pinned };
-      });
-    });
   };
 
   const clearMedia = () => {
@@ -111,7 +97,6 @@ export function MediaProvider({ children }: { children: ReactNode }) {
         removeMedia,
         reorderMedia,
         clearMedia,
-        togglePin,
         importInstagramFeed,
       }}
     >

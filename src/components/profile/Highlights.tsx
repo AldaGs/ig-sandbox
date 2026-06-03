@@ -1,19 +1,23 @@
 import { useRef } from 'react';
 import { Plus } from 'lucide-react';
-import { useProfile } from '../../context/ProfileContext';
+import { useProfile, fileToDataUrl } from '../../context/ProfileContext';
 
 export default function Highlights() {
   const { profile, addHighlight, removeHighlight } = useProfile();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const cover = URL.createObjectURL(file);
-    const title =
-      prompt('Highlight title')?.slice(0, 16) || `H${profile.highlights.length + 1}`;
-    addHighlight({ cover, title });
-    e.target.value = '';
+    try {
+      const cover = await fileToDataUrl(file);
+      const title =
+        prompt('Highlight title')?.slice(0, 16) ||
+        `H${profile.highlights.length + 1}`;
+      addHighlight({ cover, title });
+    } finally {
+      e.target.value = '';
+    }
   };
 
   return (

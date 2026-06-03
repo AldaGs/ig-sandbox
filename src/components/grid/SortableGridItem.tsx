@@ -1,14 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Play, Pin } from 'lucide-react';
-import { useMedia, type MediaItem } from '../../context/MediaContext';
+import { useProfile } from '../../context/ProfileContext';
+import type { MediaItem } from '../../context/MediaContext';
 
 interface Props {
   item: MediaItem;
+  pinned: boolean;
 }
 
-export default function SortableGridItem({ item }: Props) {
-  const { togglePin } = useMedia();
+export default function SortableGridItem({ item, pinned }: Props) {
+  const { togglePinnedId } = useProfile();
   const {
     attributes,
     listeners,
@@ -37,7 +39,7 @@ export default function SortableGridItem({ item }: Props) {
     touchAction: 'none',
   };
 
-  const handleDoubleClick = () => togglePin(item.id);
+  const handleDoubleClick = () => togglePinnedId(item.id);
 
   return (
     <div
@@ -54,13 +56,13 @@ export default function SortableGridItem({ item }: Props) {
         className="h-full w-full object-cover"
         draggable={false}
       />
-      {item.pinned && (
+      {pinned && (
         <Pin
           size={16}
           className="absolute right-1.5 top-1.5 fill-white text-white drop-shadow"
         />
       )}
-      {!item.pinned && item.type === 'video' && (
+      {!pinned && item.type === 'video' && (
         <Play
           size={16}
           className="absolute right-1.5 top-1.5 fill-white text-white drop-shadow"
