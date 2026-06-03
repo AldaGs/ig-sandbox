@@ -34,10 +34,10 @@ function buildAuthUrl(): string | null {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: 'user_profile,user_media',
+    scope: 'instagram_business_basic',
     response_type: 'code',
   });
-  return `https://api.instagram.com/oauth/authorize?${params.toString()}`;
+  return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
 }
 
 export default function Header() {
