@@ -90,13 +90,32 @@ export default function ProfileHeader() {
         )}
       </div>
 
-      {/* Action buttons */}
-      <div className="mt-3 grid grid-cols-2 gap-1.5">
-        <Btn>Edit profile</Btn>
-        <Btn>View archive</Btn>
-      </div>
-      <div className="mt-1.5">
-        <Btn full>Ad tools</Btn>
+      {/* Public action buttons */}
+      <div className="mt-3 flex gap-1.5">
+        <button
+          type="button"
+          className="flex-1 rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-semibold text-white active:bg-blue-600"
+        >
+          Follow
+        </button>
+        <button
+          type="button"
+          className="flex-1 rounded-lg bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white active:bg-neutral-700"
+        >
+          Message
+        </button>
+        <button
+          type="button"
+          aria-label="Suggested"
+          className="rounded-lg bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white active:bg-neutral-700"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <line x1="19" y1="8" x2="19" y2="14" />
+            <line x1="22" y1="11" x2="16" y2="11" />
+          </svg>
+        </button>
       </div>
     </section>
   );
@@ -111,13 +130,3 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
-function Btn({ children, full }: { children: React.ReactNode; full?: boolean }) {
-  return (
-    <button
-      type="button"
-      className={`${full ? 'w-full' : ''} rounded-lg bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white active:bg-neutral-700`}
-    >
-      {children}
-    </button>
-  );
-}
