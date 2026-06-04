@@ -1,12 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
 import {
   DndContext,
+  DragOverlay,
   MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
   closestCenter,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -17,6 +19,7 @@ import { Pin, Eye, EyeOff } from 'lucide-react';
 import { useMedia } from '../context/MediaContext';
 import { useProfile } from '../context/ProfileContext';
 import SortableGridItem from '../components/grid/SortableGridItem';
+import TileContent from '../components/grid/TileContent';
 import MediaActionSheet from '../components/grid/MediaActionSheet';
 import AdjustPreviewModal from '../components/grid/AdjustPreviewModal';
 import ProfileHeader from '../components/profile/ProfileHeader';
@@ -35,6 +38,8 @@ export default function GridPreview() {
   const [showHidden, setShowHidden] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [adjustId, setAdjustId] = useState<string | null>(null);
+  // Id of the tile currently being dragged, rendered in the DragOverlay.
+  const [activeId, setActiveId] = useState<string | null>(null);
   // Id of the item currently being targeted by the "Replace" file picker.
   const replaceId = useRef<string | null>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
@@ -59,8 +64,14 @@ export default function GridPreview() {
 
   const menuItem = menuId ? media.find((m) => m.id === menuId) : null;
   const adjustItem = adjustId ? media.find((m) => m.id === adjustId) : null;
+  const activeItem = activeId ? media.find((m) => m.id === activeId) : null;
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = sorted.findIndex((m) => m.id === active.id);
@@ -77,9 +88,10 @@ export default function GridPreview() {
     pinFirstN(media.slice(0, 3).map((m) => m.id), 3);
   };
 
+  // The action sheet animates itself closed and then runs these, so they only
+  // perform the effect — closing is handled by the sheet's onClose.
   const handleReplaceClick = () => {
     replaceId.current = menuId;
-    setMenuId(null);
     replaceInput.current?.click();
   };
 
@@ -100,17 +112,14 @@ export default function GridPreview() {
 
   const handleToggleHide = () => {
     if (menuItem) updateMedia(menuItem.id, { hidden: !menuItem.hidden });
-    setMenuId(null);
   };
 
   const handleRemove = () => {
     if (menuId) removeMedia(menuId);
-    setMenuId(null);
   };
 
   const handleAdjust = () => {
     setAdjustId(menuId);
-    setMenuId(null);
   };
 
   return (
@@ -160,7 +169,9 @@ export default function GridPreview() {
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveId(null)}
           >
             <SortableContext
               items={sorted.map((m) => m.id)}
@@ -177,6 +188,22 @@ export default function GridPreview() {
                 ))}
               </div>
             </SortableContext>
+            {/* The lifted tile follows the pointer and animates into its new
+                slot on drop. */}
+            <DragOverlay dropAnimation={{ duration: 220, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>
+              {activeItem ? (
+                <div
+                  className="relative aspect-[4/5] overflow-hidden rounded-sm bg-neutral-900"
+                  style={{
+                    rotate: '-3deg',
+                    boxShadow:
+                      '0 12px 24px -8px rgba(0,0,0,0.6), 0 4px 8px -4px rgba(0,0,0,0.4)',
+                  }}
+                >
+                  <TileContent item={activeItem} pinned={isPinned(activeItem.id)} />
+                </div>
+              ) : null}
+            </DragOverlay>
           </DndContext>
         </>
       )}

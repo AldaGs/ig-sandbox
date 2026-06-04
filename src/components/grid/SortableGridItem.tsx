@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Play, Pin, EyeOff, Loader } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
 import type { MediaItem } from '../../context/MediaContext';
+import TileContent from './TileContent';
 
 interface Props {
   item: MediaItem;
@@ -31,6 +31,9 @@ export default function SortableGridItem({ item, pinned, onOpenMenu }: Props) {
   const dragEndAt = useRef(0);
   // Pending single-tap timer, cancelled if a second tap arrives (double tap).
   const tapTimer = useRef<number | null>(null);
+  // Whether the current interaction came from a mouse, so long-press on touch
+  // never opens the menu (only desktop right-click does).
+  const pointerType = useRef<string>('');
 
   useEffect(() => {
     if (wasDragging.current && !isDragging) dragEndAt.current = Date.now();
@@ -43,22 +46,11 @@ export default function SortableGridItem({ item, pinned, onOpenMenu }: Props) {
     };
   }, []);
 
-  const dragTransform = transform
-    ? {
-        ...transform,
-        scaleX: isDragging ? 1.08 : transform.scaleX,
-        scaleY: isDragging ? 1.08 : transform.scaleY,
-      }
-    : null;
-
   const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(dragTransform),
+    transform: CSS.Transform.toString(transform),
     transition: transition ?? 'transform 200ms cubic-bezier(0.2, 0, 0, 1)',
-    rotate: isDragging ? '-3deg' : '0deg',
-    zIndex: isDragging ? 50 : 'auto',
-    boxShadow: isDragging
-      ? '0 12px 24px -8px rgba(0,0,0,0.6), 0 4px 8px -4px rgba(0,0,0,0.4)'
-      : 'none',
+    // The lifted tile is drawn by the DragOverlay; leave a faint gap here.
+    opacity: isDragging ? 0.35 : 1,
     // Reserve vertical panning for the browser (so the page scrolls) while a
     // press-and-hold initiates the drag.
     touchAction: 'pan-y',
@@ -88,46 +80,20 @@ export default function SortableGridItem({ item, pinned, onOpenMenu }: Props) {
       style={style}
       {...attributes}
       {...listeners}
+      onPointerDownCapture={(e) => {
+        pointerType.current = e.pointerType;
+      }}
       onClick={handleClick}
       onContextMenu={(e) => {
-        // Right-click (desktop) opens the menu directly.
+        // Right-click on desktop opens the menu; a touch long-press must not.
         e.preventDefault();
-        if (!item.processing) onOpenMenu(item.id);
+        if (pointerType.current === 'mouse' && !item.processing) {
+          onOpenMenu(item.id);
+        }
       }}
       className="relative aspect-[4/5] overflow-hidden bg-neutral-100 dark:bg-neutral-900"
     >
-      {item.processing ? (
-        <div className="ig-shimmer absolute inset-0 flex items-center justify-center">
-          <Loader size={20} className="animate-spin text-neutral-400" />
-        </div>
-      ) : (
-        <img
-          src={item.url}
-          alt=""
-          style={{ objectPosition: item.objectPosition }}
-          className={`h-full w-full object-cover ${
-            item.hidden ? 'opacity-30' : ''
-          }`}
-          draggable={false}
-        />
-      )}
-      {item.hidden && !item.processing && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <EyeOff size={20} className="text-white/80 drop-shadow" />
-        </div>
-      )}
-      {pinned && (
-        <Pin
-          size={16}
-          className="absolute right-1.5 top-1.5 fill-white text-white drop-shadow"
-        />
-      )}
-      {!pinned && item.type === 'video' && (
-        <Play
-          size={16}
-          className="absolute right-1.5 top-1.5 fill-white text-white drop-shadow"
-        />
-      )}
+      <TileContent item={item} pinned={pinned} />
     </div>
   );
 }
