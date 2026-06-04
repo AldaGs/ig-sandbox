@@ -1,23 +1,29 @@
 import { useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useProfile, fileToDataUrl } from '../../context/ProfileContext';
+import { useDialog } from '../ui/Dialog';
 
 export default function Highlights() {
   const { profile, addHighlight, removeHighlight } = useProfile();
+  const dialog = useDialog();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    try {
-      const cover = await fileToDataUrl(file);
-      const title =
-        prompt('Highlight title')?.slice(0, 16) ||
-        `H${profile.highlights.length + 1}`;
-      addHighlight({ cover, title });
-    } finally {
-      e.target.value = '';
-    }
+    const cover = await fileToDataUrl(file);
+    const name = await dialog.prompt({
+      title: 'New highlight',
+      message: 'Give this highlight a name.',
+      placeholder: 'Highlight title',
+      confirmLabel: 'Add',
+      maxLength: 16,
+    });
+    // Cancelled -> don't add the highlight.
+    if (name === null) return;
+    const title = name.trim().slice(0, 16) || `H${profile.highlights.length + 1}`;
+    addHighlight({ cover, title });
   };
 
   return (

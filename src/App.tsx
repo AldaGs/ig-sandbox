@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { MediaProvider, useMedia } from './context/MediaContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
+import { DialogProvider } from './components/ui/Dialog';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
 import Uploader from './components/Uploader';
@@ -115,23 +116,25 @@ export default function App() {
   return (
     <ProfileProvider>
       <MediaProvider>
-        <BrowserRouter>
-          <InstagramAuthBridge />
-          <div className="flex h-svh w-screen flex-col bg-black text-white">
-            <Header />
-            <main className="flex-1 overflow-y-auto">
-              <Routes>
-                <Route path="/" element={<GridPreview />} />
-                <Route path="/story" element={<StoryPreview />} />
-                <Route path="/post" element={<SinglePostPreview />} />
-                <Route path="/privacy" element={<Privacy />} />
-                <Route path="/terms" element={<Terms />} />
-              </Routes>
-            </main>
-            <Uploader />
-            <BottomNav />
-          </div>
-        </BrowserRouter>
+        <DialogProvider>
+          <BrowserRouter>
+            <InstagramAuthBridge />
+            <div className="flex h-svh w-screen flex-col bg-black text-white">
+              <Header />
+              <main className="flex-1 overflow-y-auto">
+                <Routes>
+                  <Route path="/" element={<GridPreview />} />
+                  <Route path="/story" element={<StoryPreview />} />
+                  <Route path="/post" element={<SinglePostPreview />} />
+                  <Route path="/privacy" element={<Privacy />} />
+                  <Route path="/terms" element={<Terms />} />
+                </Routes>
+              </main>
+              <Uploader />
+              <BottomNav />
+            </div>
+          </BrowserRouter>
+        </DialogProvider>
       </MediaProvider>
     </ProfileProvider>
   );

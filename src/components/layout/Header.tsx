@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Trash2, Loader, LogOut } from 'lucide-react';
 import { useMedia } from '../../context/MediaContext';
 import { useProfile } from '../../context/ProfileContext';
+import { useDialog } from '../ui/Dialog';
 import { clearStoredToken } from '../../App';
 
 function InstagramIcon({ size = 18 }: { size?: number }) {
@@ -49,6 +50,7 @@ export default function Header() {
   const { pathname } = useLocation();
   const { media, clearMedia, isSyncing } = useMedia();
   const { resetProfile } = useProfile();
+  const dialog = useDialog();
   const title = titles[pathname] ?? 'Sandbox';
 
   const [connected, setConnected] = useState<boolean>(
@@ -60,24 +62,38 @@ export default function Header() {
     setConnected(!!localStorage.getItem('ig_access_token'));
   }, [isSyncing]);
 
-  const handleClear = () => {
+  const handleClear = async () => {
     if (media.length === 0) return;
-    if (confirm('Clear all media from the sandbox?')) clearMedia();
+    const ok = await dialog.confirm({
+      title: 'Clear grid',
+      message: 'Remove all media from the sandbox? This can’t be undone.',
+      confirmLabel: 'Clear',
+      danger: true,
+    });
+    if (ok) clearMedia();
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     const url = buildAuthUrl();
     if (!url) {
-      alert(
-        'Instagram OAuth is not configured. Set VITE_IG_CLIENT_ID and VITE_IG_REDIRECT_URI.',
-      );
+      await dialog.alert({
+        title: 'Instagram not configured',
+        message:
+          'Set VITE_IG_CLIENT_ID and VITE_IG_REDIRECT_URI to enable importing your feed.',
+      });
       return;
     }
     window.location.href = url;
   };
 
-  const handleDisconnect = () => {
-    if (!confirm('Disconnect Instagram and remove imported data?')) return;
+  const handleDisconnect = async () => {
+    const ok = await dialog.confirm({
+      title: 'Disconnect Instagram',
+      message: 'This removes the stored token and any imported media.',
+      confirmLabel: 'Disconnect',
+      danger: true,
+    });
+    if (!ok) return;
     clearStoredToken();
     clearMedia();
     resetProfile();
