@@ -17,13 +17,23 @@ export interface MediaItem {
   aspect_ratio: number;
   source: MediaSource;
   permalink?: string;
+  // Hidden items stay in the sandbox but are kept out of the grid/previews
+  // until the user reveals them.
+  hidden?: boolean;
+  // CSS object-position (e.g. "50% 30%") for the grid crop, set via "Adjust
+  // preview".
+  objectPosition?: string;
+  // True while a freshly-added file is still being decoded/converted, so the
+  // UI can show a placeholder in its place.
+  processing?: boolean;
 }
 
 interface MediaContextValue {
   media: MediaItem[];
   isSyncing: boolean;
   syncError: string | null;
-  addMedia: (items: Omit<MediaItem, 'id'> | Omit<MediaItem, 'id'>[]) => void;
+  addMedia: (items: Omit<MediaItem, 'id'> | Omit<MediaItem, 'id'>[]) => string[];
+  updateMedia: (id: string, patch: Partial<Omit<MediaItem, 'id'>>) => void;
   removeMedia: (id: string) => void;
   reorderMedia: (items: MediaItem[]) => void;
   clearMedia: () => void;
@@ -48,6 +58,16 @@ export function MediaProvider({ children }: { children: ReactNode }) {
       id: crypto.randomUUID(),
     }));
     setMedia((prev) => [...withIds, ...prev]);
+    return withIds.map((i) => i.id);
+  };
+
+  const updateMedia: MediaContextValue['updateMedia'] = (id, patch) => {
+    setMedia((prev) => {
+      const target = prev.find((m) => m.id === id);
+      // If the url is being swapped out (e.g. "Replace"), free the old blob.
+      if (target && patch.url && patch.url !== target.url) revoke(target.url);
+      return prev.map((m) => (m.id === id ? { ...m, ...patch } : m));
+    });
   };
 
   const removeMedia: MediaContextValue['removeMedia'] = (id) => {
@@ -94,6 +114,7 @@ export function MediaProvider({ children }: { children: ReactNode }) {
         isSyncing,
         syncError,
         addMedia,
+        updateMedia,
         removeMedia,
         reorderMedia,
         clearMedia,

@@ -1,18 +1,20 @@
+import { useEffect, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Play, Pin } from 'lucide-react';
+import { Play, Pin, EyeOff, Loader } from 'lucide-react';
 import { useProfile } from '../../context/ProfileContext';
 import type { MediaItem } from '../../context/MediaContext';
 
 interface Props {
   item: MediaItem;
   pinned: boolean;
-  // Only locally uploaded media can be reordered; imported Instagram posts are
-  // shown for context but stay put.
-  draggable: boolean;
+  onOpenMenu: (id: string) => void;
 }
 
-export default function SortableGridItem({ item, pinned, draggable }: Props) {
+// Window for telling a single tap (open menu) apart from a double tap (pin).
+const DOUBLE_TAP_MS = 220;
+
+export default function SortableGridItem({ item, pinned, onOpenMenu }: Props) {
   const { togglePinnedId } = useProfile();
   const {
     attributes,
@@ -21,7 +23,25 @@ export default function SortableGridItem({ item, pinned, draggable }: Props) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id, disabled: { draggable: !draggable } });
+  } = useSortable({ id: item.id });
+
+  // dnd-kit can fire a click right after a drag ends; track when a drag just
+  // finished so we can swallow that click (a reorder shouldn't open the menu).
+  const wasDragging = useRef(false);
+  const dragEndAt = useRef(0);
+  // Pending single-tap timer, cancelled if a second tap arrives (double tap).
+  const tapTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (wasDragging.current && !isDragging) dragEndAt.current = Date.now();
+    wasDragging.current = isDragging;
+  }, [isDragging]);
+
+  useEffect(() => {
+    return () => {
+      if (tapTimer.current !== null) window.clearTimeout(tapTimer.current);
+    };
+  }, []);
 
   const dragTransform = transform
     ? {
@@ -39,30 +59,63 @@ export default function SortableGridItem({ item, pinned, draggable }: Props) {
     boxShadow: isDragging
       ? '0 12px 24px -8px rgba(0,0,0,0.6), 0 4px 8px -4px rgba(0,0,0,0.4)'
       : 'none',
-    // For draggable tiles, reserve vertical panning for the browser (so the page
-    // still scrolls) while a press-and-hold initiates the drag. Non-draggable
-    // tiles keep default touch behaviour and never capture the gesture.
-    touchAction: draggable ? 'pan-y' : undefined,
-    cursor: draggable ? 'grab' : undefined,
+    // Reserve vertical panning for the browser (so the page scrolls) while a
+    // press-and-hold initiates the drag.
+    touchAction: 'pan-y',
+    cursor: 'grab',
   };
 
-  const handleDoubleClick = () => togglePinnedId(item.id);
+  const handleClick = () => {
+    // Ignore the synthetic click that immediately follows a drag.
+    if (isDragging || Date.now() - dragEndAt.current < 250) return;
+    if (item.processing) return;
+    if (tapTimer.current !== null) {
+      // Second tap within the window -> double tap -> pin.
+      window.clearTimeout(tapTimer.current);
+      tapTimer.current = null;
+      togglePinnedId(item.id);
+      return;
+    }
+    tapTimer.current = window.setTimeout(() => {
+      tapTimer.current = null;
+      onOpenMenu(item.id);
+    }, DOUBLE_TAP_MS);
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...(draggable ? listeners : {})}
-      onDoubleClick={handleDoubleClick}
+      {...listeners}
+      onClick={handleClick}
+      onContextMenu={(e) => {
+        // Right-click (desktop) opens the menu directly.
+        e.preventDefault();
+        if (!item.processing) onOpenMenu(item.id);
+      }}
       className="relative aspect-[4/5] overflow-hidden bg-neutral-100 dark:bg-neutral-900"
     >
-      <img
-        src={item.url}
-        alt=""
-        className="h-full w-full object-cover"
-        draggable={false}
-      />
+      {item.processing ? (
+        <div className="ig-shimmer absolute inset-0 flex items-center justify-center">
+          <Loader size={20} className="animate-spin text-neutral-400" />
+        </div>
+      ) : (
+        <img
+          src={item.url}
+          alt=""
+          style={{ objectPosition: item.objectPosition }}
+          className={`h-full w-full object-cover ${
+            item.hidden ? 'opacity-30' : ''
+          }`}
+          draggable={false}
+        />
+      )}
+      {item.hidden && !item.processing && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <EyeOff size={20} className="text-white/80 drop-shadow" />
+        </div>
+      )}
       {pinned && (
         <Pin
           size={16}

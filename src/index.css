@@ -10,3 +10,26 @@
 body {
   margin: 0;
 }
+
+/* Loading shimmer used as a placeholder while an image is being processed. */
+@keyframes ig-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.ig-shimmer {
+  background: linear-gradient(
+    110deg,
+    #1c1c1c 25%,
+    #2c2c2c 45%,
+    #3a3a3a 50%,
+    #2c2c2c 55%,
+    #1c1c1c 75%
+  );
+  background-size: 200% 100%;
+  animation: ig-shimmer 1.5s linear infinite;
+}

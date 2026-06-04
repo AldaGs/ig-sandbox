@@ -4,9 +4,11 @@ import { useMedia } from '../context/MediaContext';
 import { useProfile } from '../context/ProfileContext';
 
 export default function SinglePostPreview() {
-  const { media } = useMedia();
+  const { media: allMedia } = useMedia();
   const { profile } = useProfile();
   const [index, setIndex] = useState(0);
+
+  const media = allMedia.filter((m) => !m.hidden && !m.processing);
 
   if (media.length === 0) {
     return (
@@ -48,6 +50,7 @@ export default function SinglePostPreview() {
         <img
           src={current.url}
           alt=""
+          style={{ objectPosition: current.objectPosition }}
           className="h-full w-full object-cover"
         />
       </div>

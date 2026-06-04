@@ -1,72 +1,48 @@
 import { useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useMedia, type MediaItem } from '../context/MediaContext';
+import {
+  isImageCandidate,
+  readAspectRatio,
+  toDisplayableBlob,
+} from '../services/image';
 
-function readAspectRatio(url: string): Promise<number> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const r = img.naturalWidth && img.naturalHeight
-        ? img.naturalWidth / img.naturalHeight
-        : 1;
-      resolve(r);
-    };
-    img.onerror = () => resolve(1);
-    img.src = url;
-  });
-}
-
-// iPhone photos are often HEIC/HEIF, which most browsers can't render in an
-// <img> (they show a broken-image icon). Decode those to JPEG up front so the
-// rest of the app only ever deals with displayable blobs.
-function isImageCandidate(file: File): boolean {
-  return file.type.startsWith('image/') || looksLikeHeic(file);
-}
-
-function looksLikeHeic(file: File): boolean {
-  return /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
-}
-
-async function toDisplayableBlob(file: File): Promise<Blob> {
-  // Only pull in the (heavy) HEIC decoder for files that look like HEIC, and
-  // only at upload time — it's lazy-loaded so it never bloats the main bundle.
-  if (!looksLikeHeic(file)) return file;
-  try {
-    const { heicTo, isHeic } = await import('heic-to');
-    if (await isHeic(file)) {
-      return await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
-    }
-  } catch (err) {
-    console.error('HEIC conversion failed, using original file', err);
-  }
-  return file;
-}
+// Aspect ratio of an empty grid cell, used for placeholders until the real
+// image has been decoded.
+const PLACEHOLDER_RATIO = 4 / 5;
 
 export default function Uploader() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const { addMedia } = useMedia();
+  const { addMedia, updateMedia } = useMedia();
 
   const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files ?? []);
     const images = selected.filter(isImageCandidate);
-    if (images.length === 0) {
-      e.target.value = '';
-      return;
-    }
+    e.target.value = '';
+    if (images.length === 0) return;
 
-    const items: Omit<MediaItem, 'id'>[] = await Promise.all(
-      images.map(async (file) => {
+    // Reverse so the first selected file ends up on top after the prepend.
+    const ordered = images.slice().reverse();
+
+    // Drop placeholders in immediately so the user sees the slots fill up
+    // (with a loading shimmer) while HEIC decoding / aspect-ratio reads run.
+    const placeholders: Omit<MediaItem, 'id'>[] = ordered.map(() => ({
+      type: 'image',
+      url: '',
+      aspect_ratio: PLACEHOLDER_RATIO,
+      source: 'local',
+      processing: true,
+    }));
+    const ids = addMedia(placeholders);
+
+    await Promise.all(
+      ordered.map(async (file, idx) => {
         const blob = await toDisplayableBlob(file);
         const url = URL.createObjectURL(blob);
         const aspect_ratio = await readAspectRatio(url);
-        return { url, aspect_ratio, type: 'image' as const, source: 'local' as const };
+        updateMedia(ids[idx], { url, aspect_ratio, processing: false });
       }),
     );
-
-    // Reverse so the first selected file lands on top of the grid.
-    addMedia(items.reverse());
-
-    e.target.value = '';
   };
 
   return (
