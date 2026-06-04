@@ -40,3 +40,26 @@ export async function toDisplayableBlob(file: File): Promise<Blob> {
   }
   return file;
 }
+
+// Downscale + recompress for persistence. localStorage caps at ~5MB per
+// origin, so post drafts (which may have several images each, x several
+// drafts) need to be small enough to fit. ~1080px wide JPEG @ 0.82 lands at
+// 120-250KB for typical photos.
+export async function downscaleToDataUrl(
+  blob: Blob,
+  maxDim = 1080,
+  quality = 0.82,
+): Promise<string> {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D unsupported');
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL('image/jpeg', quality);
+}

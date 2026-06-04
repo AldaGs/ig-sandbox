@@ -15,6 +15,38 @@ export interface Highlight {
   cover: string; // data URL so it persists
 }
 
+export type PostAspect = '1:1' | '4:5' | '1.91:1';
+
+export interface PostDraft {
+  id: string;
+  images: string[]; // data URLs, downscaled
+  aspect: PostAspect;
+  caption: string;
+  createdAt: number;
+}
+
+export interface StoryTextOverlay {
+  id: string;
+  kind: 'text';
+  text: string;
+  // 0..1 normalized so overlays rescale with the story frame.
+  x: number;
+  y: number;
+  color: string;
+  size: number; // px at a 360-wide frame
+}
+
+export interface StoryStickerOverlay {
+  id: string;
+  kind: 'sticker';
+  emoji: string;
+  x: number;
+  y: number;
+  size: number;
+}
+
+export type StoryOverlay = StoryTextOverlay | StoryStickerOverlay;
+
 export interface Profile {
   username: string;
   name: string;
@@ -28,6 +60,8 @@ export interface Profile {
   highlights: Highlight[];
   note: string;
   pinnedIds: string[]; // ids of media items pinned for this profile
+  postDrafts: PostDraft[];
+  storyOverlays: Record<string, StoryOverlay[]>; // keyed by media id
 }
 
 const DEFAULT_PROFILE: Profile = {
@@ -42,6 +76,8 @@ const DEFAULT_PROFILE: Profile = {
   highlights: [],
   note: '',
   pinnedIds: [],
+  postDrafts: [],
+  storyOverlays: {},
 };
 
 // Fields the user can override (and that should persist per IG username).
@@ -55,6 +91,8 @@ type Overridable = Pick<
   | 'highlights'
   | 'note'
   | 'pinnedIds'
+  | 'postDrafts'
+  | 'storyOverlays'
 >;
 const OVERRIDABLE_KEYS: (keyof Overridable)[] = [
   'name',
@@ -65,6 +103,8 @@ const OVERRIDABLE_KEYS: (keyof Overridable)[] = [
   'highlights',
   'note',
   'pinnedIds',
+  'postDrafts',
+  'storyOverlays',
 ];
 
 const STORAGE_PREFIX = 'ig-sandbox:profile:';
@@ -104,6 +144,12 @@ interface ProfileContextValue {
   togglePinnedId: (id: string) => void;
   pinFirstN: (ids: string[], n?: number) => void;
   isPinned: (id: string) => boolean;
+  // Post drafts
+  createPostDraft: () => string;
+  updatePostDraft: (id: string, patch: Partial<Omit<PostDraft, 'id'>>) => void;
+  deletePostDraft: (id: string) => void;
+  // Story overlays
+  setStoryOverlays: (mediaId: string, overlays: StoryOverlay[]) => void;
   syncProfileFromInstagram: (accessToken: string) => Promise<void>;
   resetProfile: () => void;
 }
@@ -182,6 +228,41 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     [profile.pinnedIds],
   );
 
+  const createPostDraft = (): string => {
+    const id = crypto.randomUUID();
+    setProfileState((prev) => ({
+      ...prev,
+      postDrafts: [
+        { id, images: [], aspect: '1:1', caption: '', createdAt: Date.now() },
+        ...prev.postDrafts,
+      ],
+    }));
+    return id;
+  };
+
+  const updatePostDraft: ProfileContextValue['updatePostDraft'] = (id, patch) => {
+    setProfileState((prev) => ({
+      ...prev,
+      postDrafts: prev.postDrafts.map((d) =>
+        d.id === id ? { ...d, ...patch } : d,
+      ),
+    }));
+  };
+
+  const deletePostDraft = (id: string) => {
+    setProfileState((prev) => ({
+      ...prev,
+      postDrafts: prev.postDrafts.filter((d) => d.id !== id),
+    }));
+  };
+
+  const setStoryOverlays = (mediaId: string, overlays: StoryOverlay[]) => {
+    setProfileState((prev) => ({
+      ...prev,
+      storyOverlays: { ...prev.storyOverlays, [mediaId]: overlays },
+    }));
+  };
+
   const syncProfileFromInstagram = useCallback(async (accessToken: string) => {
     try {
       const ig = await fetchInstagramProfile(accessToken);
@@ -204,6 +285,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         highlights: saved.highlights ?? [],
         note: saved.note ?? '',
         pinnedIds: saved.pinnedIds ?? [],
+        postDrafts: saved.postDrafts ?? [],
+        storyOverlays: saved.storyOverlays ?? {},
       });
     } catch (e) {
       console.warn('Profile sync failed:', e);
@@ -235,6 +318,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         togglePinnedId,
         pinFirstN,
         isPinned,
+        createPostDraft,
+        updatePostDraft,
+        deletePostDraft,
+        setStoryOverlays,
         syncProfileFromInstagram,
         resetProfile,
       }}
