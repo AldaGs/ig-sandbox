@@ -9,6 +9,13 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // The HEIC decoder (libheif WASM, ~3 MB) is code-split and only loaded
+        // on demand when someone uploads a HEIC file. Keep it out of the
+        // precache manifest so it doesn't bloat the service-worker cache for
+        // everyone; it's fetched from the network the rare time it's needed.
+        globIgnores: ['**/heic-to-*.js'],
+      },
       manifest: {
         name: 'IG Sandbox',
         short_name: 'Sandbox',

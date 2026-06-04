@@ -7,9 +7,12 @@ import type { MediaItem } from '../../context/MediaContext';
 interface Props {
   item: MediaItem;
   pinned: boolean;
+  // Only locally uploaded media can be reordered; imported Instagram posts are
+  // shown for context but stay put.
+  draggable: boolean;
 }
 
-export default function SortableGridItem({ item, pinned }: Props) {
+export default function SortableGridItem({ item, pinned, draggable }: Props) {
   const { togglePinnedId } = useProfile();
   const {
     attributes,
@@ -18,7 +21,7 @@ export default function SortableGridItem({ item, pinned }: Props) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id });
+  } = useSortable({ id: item.id, disabled: { draggable: !draggable } });
 
   const dragTransform = transform
     ? {
@@ -36,7 +39,11 @@ export default function SortableGridItem({ item, pinned }: Props) {
     boxShadow: isDragging
       ? '0 12px 24px -8px rgba(0,0,0,0.6), 0 4px 8px -4px rgba(0,0,0,0.4)'
       : 'none',
-    touchAction: 'none',
+    // For draggable tiles, reserve vertical panning for the browser (so the page
+    // still scrolls) while a press-and-hold initiates the drag. Non-draggable
+    // tiles keep default touch behaviour and never capture the gesture.
+    touchAction: draggable ? 'pan-y' : undefined,
+    cursor: draggable ? 'grab' : undefined,
   };
 
   const handleDoubleClick = () => togglePinnedId(item.id);
@@ -46,7 +53,7 @@ export default function SortableGridItem({ item, pinned }: Props) {
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
+      {...(draggable ? listeners : {})}
       onDoubleClick={handleDoubleClick}
       className="relative aspect-[4/5] overflow-hidden bg-neutral-100 dark:bg-neutral-900"
     >

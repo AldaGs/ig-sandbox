@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -25,10 +25,14 @@ export default function GridPreview() {
   const { media, reorderMedia } = useMedia();
   const { isPinned, pinFirstN } = useProfile();
 
+  // Mouse drags start after a small move. On touch we require a short
+  // press-and-hold instead: a quick swipe (moving past the tolerance before the
+  // delay elapses) is left to the browser as a scroll, so touching an image to
+  // scroll no longer starts a drag.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 150, tolerance: 5 },
+      activationConstraint: { delay: 200, tolerance: 8 },
     }),
   );
 
@@ -90,6 +94,7 @@ export default function GridPreview() {
                     key={item.id}
                     item={item}
                     pinned={isPinned(item.id)}
+                    draggable={item.source === 'local'}
                   />
                 ))}
               </div>
