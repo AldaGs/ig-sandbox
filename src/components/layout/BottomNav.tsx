@@ -9,7 +9,10 @@ const items = [
 
 export default function BottomNav() {
   return (
-    <nav className="sticky bottom-0 z-10 flex h-14 items-center justify-around border-t border-neutral-200 bg-white dark:border-neutral-800 dark:bg-black">
+    <nav
+      className="sticky bottom-0 z-10 flex h-14 items-center justify-around border-t border-neutral-200 bg-white dark:border-neutral-800 dark:bg-black"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
       {items.map(({ to, label, Icon }) => (
         <NavLink
           key={to}

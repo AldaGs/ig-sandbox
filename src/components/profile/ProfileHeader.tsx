@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useProfile, fileToDataUrl } from '../../context/ProfileContext';
 import { useMedia } from '../../context/MediaContext';
+import VerifiedBadge from './VerifiedBadge';
 
 export default function ProfileHeader() {
   const { profile, setProfile, setNote } = useProfile();
@@ -77,12 +78,29 @@ export default function ProfileHeader() {
 
       {/* Editable name + bio + website */}
       <div className="mt-3 space-y-0.5 text-sm leading-snug">
-        <input
-          value={profile.name}
-          onChange={(e) => setProfile({ name: e.target.value })}
-          placeholder="Name"
-          className="block w-full bg-transparent font-semibold text-white outline-none placeholder:text-neutral-600"
-        />
+        <div className="flex items-center gap-1.5">
+          <input
+            value={profile.name}
+            onChange={(e) => setProfile({ name: e.target.value })}
+            placeholder="Name"
+            className="block flex-1 bg-transparent font-semibold text-white outline-none placeholder:text-neutral-600"
+          />
+          <button
+            type="button"
+            onClick={() => setProfile({ verified: !profile.verified })}
+            title={
+              profile.verified
+                ? 'Verified badge on — tap to remove'
+                : 'Verified badge off — tap to add'
+            }
+            className={`grid h-5 w-5 place-items-center ${
+              profile.verified ? '' : 'opacity-30 grayscale'
+            }`}
+            aria-label="Toggle verified badge"
+          >
+            <VerifiedBadge size={16} />
+          </button>
+        </div>
         <textarea
           value={profile.biography}
           onChange={(e) => setProfile({ biography: e.target.value })}

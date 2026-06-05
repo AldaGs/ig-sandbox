@@ -15,9 +15,12 @@ import {
   arrayMove,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
-import { Pin, Eye, EyeOff } from 'lucide-react';
+import { Pin, Eye, EyeOff, Download, Loader } from 'lucide-react';
 import { useMedia } from '../context/MediaContext';
 import { useProfile } from '../context/ProfileContext';
+import { useDialog } from '../components/ui/Dialog';
+import { useUndo } from '../context/UndoContext';
+import { renderGridToPng, downloadBlob } from '../services/export';
 import SortableGridItem from '../components/grid/SortableGridItem';
 import TileContent from '../components/grid/TileContent';
 import MediaActionSheet from '../components/grid/MediaActionSheet';
@@ -33,7 +36,10 @@ import {
 
 export default function GridPreview() {
   const { media, reorderMedia, updateMedia, removeMedia } = useMedia();
-  const { isPinned, pinFirstN } = useProfile();
+  const { isPinned, pinFirstN, profile, setProfile } = useProfile();
+  const dialog = useDialog();
+  const undo = useUndo();
+  const [exporting, setExporting] = useState(false);
 
   const [showHidden, setShowHidden] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -77,15 +83,45 @@ export default function GridPreview() {
     const oldIndex = sorted.findIndex((m) => m.id === active.id);
     const newIndex = sorted.findIndex((m) => m.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
+
+    const snapshot = media; // full array including hidden items
     const newOrder = arrayMove(sorted, oldIndex, newIndex);
-    // Preserve items not currently shown (e.g. hidden ones) by keeping them.
     const shown = new Set(sorted.map((m) => m.id));
     const others = media.filter((m) => !shown.has(m.id));
     reorderMedia([...newOrder, ...others]);
+    undo.push('Moved post', () => reorderMedia(snapshot));
   };
 
   const handlePinFirst3 = () => {
+    const snapshot = profile.pinnedIds;
     pinFirstN(media.slice(0, 3).map((m) => m.id), 3);
+    undo.push('Pinned first 3', () => setProfile({ pinnedIds: snapshot }));
+  };
+
+  const handleExport = async () => {
+    if (sorted.length === 0) return;
+    setExporting(true);
+    try {
+      const blob = await renderGridToPng({
+        items: sorted,
+        header: {
+          username: profile.username,
+          postsLabel: `${sorted.length} posts · ig-sandbox preview`,
+        },
+      });
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(blob, `ig-sandbox-${profile.username}-${stamp}.png`);
+    } catch (e) {
+      await dialog.alert({
+        title: 'Export failed',
+        message:
+          e instanceof Error
+            ? e.message
+            : 'Something went wrong while generating the PNG.',
+      });
+    } finally {
+      setExporting(false);
+    }
   };
 
   // The action sheet animates itself closed and then runs these, so they only
@@ -111,7 +147,13 @@ export default function GridPreview() {
   };
 
   const handleToggleHide = () => {
-    if (menuItem) updateMedia(menuItem.id, { hidden: !menuItem.hidden });
+    if (!menuItem) return;
+    const wasHidden = !!menuItem.hidden;
+    const id = menuItem.id;
+    updateMedia(id, { hidden: !wasHidden });
+    undo.push(wasHidden ? 'Unhid post' : 'Hid post', () =>
+      updateMedia(id, { hidden: wasHidden }),
+    );
   };
 
   const handleRemove = () => {
@@ -163,6 +205,19 @@ export default function GridPreview() {
               >
                 <Pin size={12} />
                 Pin first 3
+              </button>
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={sorted.length === 0 || exporting}
+                className="flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-neutral-200 disabled:opacity-30"
+              >
+                {exporting ? (
+                  <Loader size={12} className="animate-spin" />
+                ) : (
+                  <Download size={12} />
+                )}
+                {exporting ? 'Exporting…' : 'Export PNG'}
               </button>
             </div>
           </div>
@@ -223,8 +278,13 @@ export default function GridPreview() {
         <AdjustPreviewModal
           item={adjustItem}
           onSave={(objectPosition) => {
-            updateMedia(adjustItem.id, { objectPosition });
+            const prev = adjustItem.objectPosition;
+            const id = adjustItem.id;
+            updateMedia(id, { objectPosition });
             setAdjustId(null);
+            undo.push('Adjusted crop', () =>
+              updateMedia(id, { objectPosition: prev }),
+            );
           }}
           onClose={() => setAdjustId(null)}
         />

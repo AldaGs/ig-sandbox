@@ -63,3 +63,22 @@ export async function downscaleToDataUrl(
   bitmap.close();
   return canvas.toDataURL('image/jpeg', quality);
 }
+
+// Fetch a remote image and embed it as a downscaled data URL so we can
+// persist it past the original URL's expiry (IG CDN URLs die in ~24h).
+// Returns null on any network/CORS failure so callers can fall back to the
+// raw URL.
+export async function fetchAsDownscaledDataUrl(
+  url: string,
+  maxDim = 320,
+  quality = 0.85,
+): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await downscaleToDataUrl(blob, maxDim, quality);
+  } catch {
+    return null;
+  }
+}

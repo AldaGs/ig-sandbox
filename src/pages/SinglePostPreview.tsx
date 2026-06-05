@@ -5,9 +5,8 @@ import {
   Send,
   Bookmark,
   Plus,
-  ChevronLeft,
-  ChevronRight,
   Trash2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useProfile, type PostDraft } from '../context/ProfileContext';
 import { useDialog } from '../components/ui/Dialog';
@@ -18,6 +17,7 @@ import CarouselEditor from '../components/post/CarouselEditor';
 import CaptionEditor, {
   HighlightedCaption,
 } from '../components/post/CaptionEditor';
+import VerifiedBadge from '../components/profile/VerifiedBadge';
 
 export default function SinglePostPreview() {
   const { profile, createPostDraft, updatePostDraft, deletePostDraft } =
@@ -40,7 +40,6 @@ export default function SinglePostPreview() {
   }, [drafts, activeId]);
 
   const active = drafts.find((d) => d.id === activeId) ?? null;
-  const activeIndex = active ? drafts.findIndex((d) => d.id === active.id) : -1;
 
   const handleNew = () => {
     const id = createPostDraft();
@@ -76,48 +75,57 @@ export default function SinglePostPreview() {
 
   return (
     <article className="mx-auto max-w-md bg-black pb-8 text-white">
-      {/* Draft switcher */}
-      <div className="flex items-center gap-2 border-b border-neutral-900 px-3 py-2">
-        <button
-          type="button"
-          onClick={() =>
-            setActiveId(drafts[(activeIndex - 1 + drafts.length) % drafts.length].id)
-          }
-          disabled={drafts.length < 2}
-          className="rounded-md p-1 text-neutral-400 disabled:opacity-30"
-          aria-label="Previous draft"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div className="flex-1 text-center text-xs text-neutral-400">
-          Draft {activeIndex + 1} of {drafts.length}
+      {/* Draft strip */}
+      <div className="flex items-center gap-2 border-b border-neutral-900 px-2 py-2">
+        <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+          {drafts.map((d) => {
+            const cover = d.images[0];
+            const isActive = d.id === active.id;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setActiveId(d.id)}
+                className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-md border-2 ${
+                  isActive ? 'border-white' : 'border-transparent'
+                }`}
+                aria-label={`Draft ${d.id}`}
+              >
+                {cover ? (
+                  <img
+                    src={cover}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-neutral-500">
+                    <ImageIcon size={18} />
+                  </div>
+                )}
+                {d.images.length > 1 && (
+                  <span className="absolute right-1 top-1 rounded bg-black/70 px-1 text-[10px] leading-tight text-white">
+                    {d.images.length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={handleNew}
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-neutral-700 text-neutral-400"
+            aria-label="New draft"
+          >
+            <Plus size={20} />
+          </button>
         </div>
         <button
           type="button"
-          onClick={() =>
-            setActiveId(drafts[(activeIndex + 1) % drafts.length].id)
-          }
-          disabled={drafts.length < 2}
-          className="rounded-md p-1 text-neutral-400 disabled:opacity-30"
-          aria-label="Next draft"
-        >
-          <ChevronRight size={18} />
-        </button>
-        <button
-          type="button"
           onClick={handleDelete}
-          className="rounded-md p-1 text-neutral-400 hover:text-red-500"
+          className="rounded-md p-1.5 text-neutral-400 hover:text-red-500"
           aria-label="Delete draft"
         >
           <Trash2 size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={handleNew}
-          className="flex items-center gap-1 rounded-md bg-blue-500 px-2 py-1 text-xs font-semibold text-white"
-        >
-          <Plus size={14} />
-          New
         </button>
       </div>
 
@@ -135,6 +143,7 @@ export default function SinglePostPreview() {
         draft={active}
         username={profile.username}
         avatar={profile.profilePictureUrl}
+        verified={profile.verified}
         onImagesChange={(images) => updatePostDraft(active.id, { images })}
       />
 
@@ -153,11 +162,13 @@ function FeedCard({
   draft,
   username,
   avatar,
+  verified,
   onImagesChange,
 }: {
   draft: PostDraft;
   username: string;
   avatar: string;
+  verified: boolean;
   onImagesChange: (images: string[]) => void;
 }) {
   return (
@@ -171,7 +182,10 @@ function FeedCard({
             )}
           </div>
         </div>
-        <div className="flex-1 text-sm font-semibold">{username}</div>
+        <div className="flex flex-1 items-center gap-1 text-sm font-semibold">
+          {username}
+          {verified && <VerifiedBadge size={13} />}
+        </div>
         <span className="text-lg">⋯</span>
       </header>
 

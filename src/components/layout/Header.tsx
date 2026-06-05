@@ -101,7 +101,10 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-neutral-800 bg-black px-4">
+    <header
+      className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-neutral-800 bg-black px-4"
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+    >
       <span className="text-base font-semibold text-white">ig-sandbox</span>
       <div className="flex items-center gap-3">
         <span className="text-sm text-neutral-500">{title}</span>

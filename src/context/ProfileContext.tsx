@@ -8,6 +8,12 @@ import {
   type ReactNode,
 } from 'react';
 import { fetchInstagramProfile } from '../services/instagram';
+import { fetchAsDownscaledDataUrl } from '../services/image';
+import {
+  idbGetProfile,
+  idbSetProfile,
+  idbDeleteProfile,
+} from '../services/idb';
 
 export interface Highlight {
   id: string;
@@ -62,6 +68,9 @@ export interface Profile {
   pinnedIds: string[]; // ids of media items pinned for this profile
   postDrafts: PostDraft[];
   storyOverlays: Record<string, StoryOverlay[]>; // keyed by media id
+  // The IG API doesn't expose is_verified for owner accounts, so we treat
+  // this as a user-controlled toggle for preview purposes.
+  verified: boolean;
 }
 
 const DEFAULT_PROFILE: Profile = {
@@ -78,6 +87,7 @@ const DEFAULT_PROFILE: Profile = {
   pinnedIds: [],
   postDrafts: [],
   storyOverlays: {},
+  verified: false,
 };
 
 // Fields the user can override (and that should persist per IG username).
@@ -93,6 +103,7 @@ type Overridable = Pick<
   | 'pinnedIds'
   | 'postDrafts'
   | 'storyOverlays'
+  | 'verified'
 >;
 const OVERRIDABLE_KEYS: (keyof Overridable)[] = [
   'name',
@@ -105,24 +116,46 @@ const OVERRIDABLE_KEYS: (keyof Overridable)[] = [
   'pinnedIds',
   'postDrafts',
   'storyOverlays',
+  'verified',
 ];
 
 const STORAGE_PREFIX = 'ig-sandbox:profile:';
 
-function loadOverrides(username: string): Partial<Overridable> | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + username);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+async function loadOverrides(
+  username: string,
+): Promise<Partial<Overridable> | null> {
+  return idbGetProfile<Partial<Overridable>>(username);
 }
 
-function saveOverrides(username: string, data: Partial<Overridable>) {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + username, JSON.stringify(data));
-  } catch (e) {
-    console.warn('Profile persist failed (quota?):', e);
+async function saveOverrides(
+  username: string,
+  data: Partial<Overridable>,
+): Promise<void> {
+  await idbSetProfile(username, data);
+}
+
+// One-time migration: copy any pre-IDB profiles out of localStorage into the
+// new store, then remove the localStorage entries. Safe to run on every load
+// — once the localStorage entry is gone the loop has no work to do.
+async function migrateLocalStorageProfiles(): Promise<void> {
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k);
+  }
+  for (const key of keys) {
+    const username = key.slice(STORAGE_PREFIX.length);
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const data = JSON.parse(raw) as Partial<Overridable>;
+      // Only write if there isn't already an IDB record (don't clobber).
+      const existing = await idbGetProfile(username);
+      if (!existing) await idbSetProfile(username, data);
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.warn(`Migration of ${key} failed; leaving in localStorage:`, e);
+    }
   }
 }
 
@@ -163,16 +196,27 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   // Guard the initial load: don't write defaults over a real saved profile.
   const hydratedRef = useRef(false);
 
-  // Load any persisted overrides for the default username on first mount.
+  // Migrate any pre-IDB localStorage data, then load overrides for the
+  // default username. We don't gate render on this — the UI shows defaults
+  // until the load resolves, which is sub-50ms in practice.
   useEffect(() => {
-    const saved = loadOverrides(DEFAULT_PROFILE.username);
-    if (saved) {
-      setProfileState((prev) => ({ ...prev, ...saved }));
-    }
-    hydratedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      await migrateLocalStorageProfiles();
+      const saved = await loadOverrides(DEFAULT_PROFILE.username);
+      if (cancelled) return;
+      if (saved) {
+        setProfileState((prev) => ({ ...prev, ...saved }));
+      }
+      hydratedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Persist on every change, keyed by current username.
+  // Persist on every change, keyed by current username. Fire-and-forget;
+  // IDB writes are async but ordered by the browser per object store.
   useEffect(() => {
     if (!hydratedRef.current) return;
     const overrides: Partial<Overridable> = {};
@@ -180,7 +224,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       // @ts-expect-error narrow indexed access is fine here
       overrides[k] = profile[k];
     }
-    saveOverrides(profile.username, overrides);
+    void saveOverrides(profile.username, overrides);
   }, [profile]);
 
   const setProfile = useCallback((patch: Partial<Profile>) => {
@@ -267,16 +311,30 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     try {
       const ig = await fetchInstagramProfile(accessToken);
       const username = ig.username ?? DEFAULT_PROFILE.username;
-      const saved = loadOverrides(username) ?? {};
+      const saved = (await loadOverrides(username)) ?? {};
+
+      // Avatar resolution:
+      // 1. If the saved avatar is a data URL, the user either uploaded it or
+      //    we cached it on a previous sync — keep it.
+      // 2. Otherwise (saved is missing or is a stale CDN URL), try to cache
+      //    the fresh IG URL as a downscaled data URL so it survives the
+      //    ~24h CDN expiry.
+      // 3. If caching fails (CORS, network), fall back to the raw URL — the
+      //    user will see it for now and we'll retry next sync.
+      let avatar = saved.profilePictureUrl ?? '';
+      const isUserOverride = avatar.startsWith('data:');
+      if (!isUserOverride && ig.profile_picture_url) {
+        const cached = await fetchAsDownscaledDataUrl(ig.profile_picture_url);
+        avatar = cached ?? ig.profile_picture_url;
+      }
+      if (!avatar) avatar = DEFAULT_PROFILE.profilePictureUrl;
+
       setProfileState({
         username,
         name: saved.name ?? ig.name ?? DEFAULT_PROFILE.name,
         biography:
           saved.biography ?? ig.biography ?? DEFAULT_PROFILE.biography,
-        profilePictureUrl:
-          saved.profilePictureUrl ??
-          ig.profile_picture_url ??
-          DEFAULT_PROFILE.profilePictureUrl,
+        profilePictureUrl: avatar,
         followersCount: ig.followers_count ?? 0,
         followsCount: ig.follows_count ?? 0,
         mediaCount: ig.media_count ?? 0,
@@ -287,6 +345,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         pinnedIds: saved.pinnedIds ?? [],
         postDrafts: saved.postDrafts ?? [],
         storyOverlays: saved.storyOverlays ?? {},
+        verified: saved.verified ?? false,
       });
     } catch (e) {
       console.warn('Profile sync failed:', e);
@@ -294,12 +353,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const resetProfile = () => {
-    // Wipe localStorage entry for current username and reset to defaults.
-    try {
-      localStorage.removeItem(STORAGE_PREFIX + profile.username);
-    } catch {
-      // ignore
-    }
+    // Wipe the IDB entry for the current username and reset to defaults.
+    // Fire-and-forget delete; the state reset doesn't need to wait.
+    void idbDeleteProfile(profile.username);
     hydratedRef.current = false;
     setProfileState(DEFAULT_PROFILE);
     setTimeout(() => {

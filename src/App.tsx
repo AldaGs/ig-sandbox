@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { MediaProvider, useMedia } from './context/MediaContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
-import { DialogProvider } from './components/ui/Dialog';
+import { DialogProvider, useDialog } from './components/ui/Dialog';
+import { UndoProvider } from './context/UndoContext';
+import ErrorBoundary from './components/ErrorBoundary';
+import UndoToast from './components/UndoToast';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
 import Uploader from './components/Uploader';
@@ -14,6 +17,7 @@ import Terms from './pages/Terms';
 import {
   exchangeCodeForToken,
   refreshLongLivedToken,
+  IgAuthError,
 } from './services/instagram';
 
 const TOKEN_KEY = 'ig_access_token';
@@ -43,6 +47,7 @@ function getStoredExpiry(): number | null {
 function InstagramAuthBridge() {
   const { importInstagramFeed } = useMedia();
   const { syncProfileFromInstagram } = useProfile();
+  const dialog = useDialog();
   const handledRef = useRef(false);
 
   useEffect(() => {
@@ -97,15 +102,42 @@ function InstagramAuthBridge() {
       }
 
       if (token) {
-        await Promise.all([
-          syncProfileFromInstagram(token),
-          importInstagramFeed(token),
-        ]);
+        try {
+          await Promise.all([
+            syncProfileFromInstagram(token),
+            importInstagramFeed(token),
+          ]);
+        } catch (e) {
+          // Token rejected by IG (revoked, password changed, etc.) — clear
+          // it and surface a one-shot prompt so the user can reconnect.
+          if (e instanceof IgAuthError) {
+            clearStoredToken();
+            const reconnect = await dialog.confirm({
+              title: 'Instagram session expired',
+              message:
+                'Your Instagram connection is no longer valid. Reconnect to refresh your data?',
+              confirmLabel: 'Reconnect',
+            });
+            if (reconnect) {
+              const params = new URLSearchParams({
+                enable_fb_login: '0',
+                force_authentication: '1',
+                client_id: import.meta.env.VITE_IG_CLIENT_ID ?? '',
+                redirect_uri: import.meta.env.VITE_IG_REDIRECT_URI ?? '',
+                scope: 'instagram_business_basic',
+                response_type: 'code',
+              });
+              window.location.href = `https://www.instagram.com/oauth/authorize?${params.toString()}`;
+            }
+          } else {
+            console.warn('IG sync error:', e);
+          }
+        }
       }
     };
 
     run();
-  }, [importInstagramFeed, syncProfileFromInstagram]);
+  }, [importInstagramFeed, syncProfileFromInstagram, dialog]);
 
   return null;
 }
@@ -114,9 +146,11 @@ export { clearStoredToken };
 
 export default function App() {
   return (
-    <ProfileProvider>
-      <MediaProvider>
-        <DialogProvider>
+    <ErrorBoundary>
+      <ProfileProvider>
+        <MediaProvider>
+          <UndoProvider>
+          <DialogProvider>
           <BrowserRouter>
             <InstagramAuthBridge />
             <div className="flex h-svh w-screen flex-col bg-black text-white">
@@ -131,11 +165,14 @@ export default function App() {
                 </Routes>
               </main>
               <Uploader />
+              <UndoToast />
               <BottomNav />
             </div>
           </BrowserRouter>
-        </DialogProvider>
-      </MediaProvider>
-    </ProfileProvider>
+          </DialogProvider>
+          </UndoProvider>
+        </MediaProvider>
+      </ProfileProvider>
+    </ErrorBoundary>
   );
 }

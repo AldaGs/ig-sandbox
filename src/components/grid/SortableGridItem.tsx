@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useProfile } from '../../context/ProfileContext';
+import { useUndo } from '../../context/UndoContext';
 import type { MediaItem } from '../../context/MediaContext';
 import TileContent from './TileContent';
 
@@ -15,7 +16,8 @@ interface Props {
 const DOUBLE_TAP_MS = 220;
 
 export default function SortableGridItem({ item, pinned, onOpenMenu }: Props) {
-  const { togglePinnedId } = useProfile();
+  const { togglePinnedId, profile, setProfile } = useProfile();
+  const undo = useUndo();
   const {
     attributes,
     listeners,
@@ -65,7 +67,11 @@ export default function SortableGridItem({ item, pinned, onOpenMenu }: Props) {
       // Second tap within the window -> double tap -> pin.
       window.clearTimeout(tapTimer.current);
       tapTimer.current = null;
+      const snapshot = profile.pinnedIds;
       togglePinnedId(item.id);
+      undo.push(pinned ? 'Unpinned post' : 'Pinned post', () =>
+        setProfile({ pinnedIds: snapshot }),
+      );
       return;
     }
     tapTimer.current = window.setTimeout(() => {

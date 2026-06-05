@@ -8,6 +8,7 @@ import {
   type StoryStickerOverlay,
 } from '../context/ProfileContext';
 import OverlayLayer from '../components/story/OverlayLayer';
+import VerifiedBadge from '../components/profile/VerifiedBadge';
 
 const STICKERS = ['❤️', '😍', '🔥', '👀', '✨', '⭐', '🎉', '👏', '😂', '💯'];
 const TEXT_COLORS = ['#ffffff', '#000000', '#ff3b30', '#ffcc00', '#34c759', '#5ac8fa', '#af52de'];
@@ -125,7 +126,10 @@ export default function StoryPreview() {
             )}
           </div>
         </div>
-        <span className="font-semibold drop-shadow">{profile.username}</span>
+        <span className="flex items-center gap-1 font-semibold drop-shadow">
+          {profile.username}
+          {profile.verified && <VerifiedBadge size={12} />}
+        </span>
         <span className="text-xs text-white/70 drop-shadow">2h</span>
         <button
           type="button"
