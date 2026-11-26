@@ -39,25 +39,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .json({ error: 'IG token exchange failed', detail: shortData });
     }
 
+    // Instagram Login may return either { access_token, user_id } or
+    // { data: [{ access_token, user_id, permissions }] } depending on version.
+    const short = Array.isArray(shortData?.data) ? shortData.data[0] : shortData;
+    const shortToken: string | undefined = short?.access_token;
+    const userId = short?.user_id;
+    if (!shortToken) {
+      return res
+        .status(502)
+        .json({ error: 'IG token exchange returned no token', detail: shortData });
+    }
+
     // 2) Upgrade short-lived → long-lived token (~60 days).
     const longUrl =
       'https://graph.instagram.com/access_token' +
       `?grant_type=ig_exchange_token` +
       `&client_secret=${encodeURIComponent(clientSecret)}` +
-      `&access_token=${encodeURIComponent(shortData.access_token)}`;
+      `&access_token=${encodeURIComponent(shortToken)}`;
     const longRes = await fetch(longUrl);
     const longData = await longRes.json();
-    if (!longRes.ok) {
-      return res
-        .status(longRes.status)
-        .json({ error: 'IG long-lived exchange failed', detail: longData });
+    if (!longRes.ok || !longData?.access_token) {
+      // Don't block login: fall back to the short-lived token (~1h). The
+      // client will prompt a reconnect when it expires.
+      console.error('IG long-lived exchange failed', longData);
+      return res.status(200).json({
+        access_token: shortToken,
+        expires_in: 3600,
+        user_id: userId,
+        long_lived: false,
+      });
     }
 
     // longData: { access_token, token_type: 'bearer', expires_in: <seconds> }
     return res.status(200).json({
       access_token: longData.access_token,
       expires_in: longData.expires_in,
-      user_id: shortData.user_id,
+      user_id: userId,
+      long_lived: true,
     });
   } catch (e) {
     return res.status(500).json({
