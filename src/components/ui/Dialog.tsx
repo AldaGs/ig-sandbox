@@ -132,7 +132,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               <h2 className="text-base font-semibold">{state.title}</h2>
             )}
             {state.message && (
-              <p className="mt-1 text-sm text-neutral-400">{state.message}</p>
+              <p className="mt-1 text-sm text-neutral-400 whitespace-pre-line break-words">{state.message}</p>
             )}
 
             {state.kind === 'prompt' && (
