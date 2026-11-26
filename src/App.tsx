@@ -44,6 +44,21 @@ function getStoredExpiry(): number | null {
   return raw ? Number(raw) : null;
 }
 
+function describeAuthError(raw: string): string {
+  const t = raw.toLowerCase();
+  if (t.includes('redirect_uri'))
+    return 'The login redirect address does not match the app settings. Make sure you opened the app from its main web address.';
+  if (t.includes('insufficient developer role') || t.includes('tester') || t.includes('not authorized'))
+    return 'This Instagram account is not allowed to use the app yet. The app owner needs to add you as a tester (and you need to accept the invite in Instagram → Settings → Apps and websites).';
+  if (t.includes('authorization code') && (t.includes('used') || t.includes('expired')))
+    return 'The login link expired or was already used. Please try connecting again.';
+  if (t.includes('access_denied') || t.includes('user_denied') || t.includes('denied'))
+    return 'Instagram access was not granted. Please try again and tap "Allow".';
+  if (t.includes('missing ig oauth config'))
+    return 'The server is not configured for Instagram login. Please contact the app owner.';
+  return 'Something went wrong while connecting to Instagram. Make sure your account is a Business or Creator account, then try again in Safari (not inside the Instagram app).';
+}
+
 function InstagramAuthBridge() {
   const { importInstagramFeed } = useMedia();
   const { syncProfileFromInstagram } = useProfile();
@@ -66,6 +81,11 @@ function InstagramAuthBridge() {
           params.get('error_description'),
         );
         window.history.replaceState({}, '', window.location.pathname);
+        const desc = params.get('error_description') ?? '';
+        await dialog.alert({
+          title: 'Could not connect Instagram',
+          message: `${describeAuthError(`${error} ${desc}`)}${desc ? `\n\nDetails: ${desc}` : ''}`,
+        });
         return;
       }
 
@@ -78,6 +98,11 @@ function InstagramAuthBridge() {
           storeToken(token, data.expires_in);
         } catch (e) {
           console.error(e);
+          const raw = e instanceof Error ? e.message : String(e);
+          await dialog.alert({
+            title: 'Could not connect Instagram',
+            message: `${describeAuthError(raw)}\n\nDetails: ${raw.slice(0, 300)}`,
+          });
         } finally {
           window.history.replaceState({}, '', window.location.pathname);
         }
@@ -131,6 +156,10 @@ function InstagramAuthBridge() {
             }
           } else {
             console.warn('IG sync error:', e);
+            await dialog.alert({
+              title: 'Could not load your Instagram data',
+              message: `Connected, but loading your profile or posts failed. Please try again later.\n\nDetails: ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}`,
+            });
           }
         }
       }
