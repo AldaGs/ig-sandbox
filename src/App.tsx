@@ -128,10 +128,15 @@ function InstagramAuthBridge() {
 
       if (token) {
         try {
-          await Promise.all([
+          // allSettled so one failing doesn't hide the other's result.
+          const results = await Promise.allSettled([
             syncProfileFromInstagram(token),
             importInstagramFeed(token),
           ]);
+          const failed = results.find(
+            (r): r is PromiseRejectedResult => r.status === 'rejected',
+          );
+          if (failed) throw failed.reason;
         } catch (e) {
           // Token rejected by IG (revoked, password changed, etc.) — clear
           // it and surface a one-shot prompt so the user can reconnect.

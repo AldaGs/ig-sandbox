@@ -102,6 +102,7 @@ export function MediaProvider({ children }: { children: ReactNode }) {
       });
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : 'Failed to import feed');
+      throw e;
     } finally {
       setIsSyncing(false);
     }

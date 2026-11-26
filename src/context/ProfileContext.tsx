@@ -349,6 +349,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       });
     } catch (e) {
       console.warn('Profile sync failed:', e);
+      throw e;
     }
   }, []);
 
